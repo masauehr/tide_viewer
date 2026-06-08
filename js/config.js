@@ -71,10 +71,13 @@ const CHART_COLORS = {
 // データ更新間隔（ミリ秒）
 const REFRESH_INTERVAL = 5 * 60 * 1000; // 5分
 
-// ズームモード定義（現在を右端として過去方向に表示、元データは15秒間隔）
+// ズームモード定義（元データは15秒間隔）
+// centered:true → 現在を中心に前後表示、false → 現在を右端として過去方向
 const ZOOM_MODES = [
-  { id: '24h', label: '24時間', hours: 24, stepSec: 300 }, // 5分×288点
-  { id: '12h', label: '12時間', hours: 12, stepSec: 120 }, // 2分×360点
-  { id: '6h',  label: '6時間',  hours: 6,  stepSec:  60 }, // 1分×360点
-  { id: '1h',  label: '1時間',  hours: 1,  stepSec:  15 }, // 15秒×240点
+  { id: '36h',  label: '36時間',  hours: 36, stepSec: 600, centered: false }, // 10分×216点
+  { id: '24h',  label: '24時間',  hours: 24, stepSec: 300, centered: false }, // 5分×288点
+  { id: '12h',  label: '12時間',  hours: 12, stepSec: 120, centered: false }, // 2分×360点
+  { id: '±12h', label: '±12時間', hours: 24, stepSec: 300, centered: true  }, // 5分×288点（現在中心）
+  { id: '6h',   label: '6時間',   hours: 6,  stepSec:  60, centered: false }, // 1分×360点
+  { id: '1h',   label: '1時間',   hours: 1,  stepSec:  15, centered: false }, // 15秒×240点
 ];

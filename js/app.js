@@ -51,10 +51,19 @@ function getCurrentRawIndex(baseTime) {
   return Math.floor(sec / 15);
 }
 
+// YYYYMMDD 文字列から JST 0:00 の Date オブジェクトを生成
+function getJSTMidnight(dateStr) {
+  const y = parseInt(dateStr.slice(0, 4));
+  const mo = parseInt(dateStr.slice(4, 6)) - 1;
+  const d = parseInt(dateStr.slice(6, 8));
+  return new Date(Date.UTC(y, mo, d) - 9 * 60 * 60 * 1000);
+}
+
 // 時刻ラベルを生成（startMinからintervalMin間隔でcount点）
-function buildTimeLabels(intervalMin, count, startMin = 0) {
+// baseDate: rawデータ起点の JST 0:00（日付境界の表示に使用）
+function buildTimeLabels(intervalMin, count, startMin = 0, baseDate = null) {
   let labelInterval;
-  if (intervalMin >= 15) labelInterval = 180;
+  if (intervalMin >= 10) labelInterval = 120;
   else if (intervalMin >= 5) labelInterval = 60;
   else if (intervalMin >= 2) labelInterval = 30;
   else if (intervalMin >= 1) labelInterval = 15;
@@ -63,9 +72,23 @@ function buildTimeLabels(intervalMin, count, startMin = 0) {
   const labels = [];
   for (let i = 0; i < count; i++) {
     const totalMin = startMin + i * intervalMin;
-    const h = String(Math.floor(totalMin / 60) % 24).padStart(2, '0');
-    const m = String(Math.round(totalMin % 60)).padStart(2, '0');
-    labels.push(totalMin % labelInterval === 0 ? `${h}:${m}` : '');
+    const prevTotalMin = startMin + (i - 1) * intervalMin;
+
+    // 日付境界：前の点と日が変わる場合は M/D を表示
+    const isDayBoundary = baseDate && i > 0 &&
+      Math.floor(totalMin / 1440) > Math.floor(prevTotalMin / 1440);
+
+    if (isDayBoundary) {
+      const dayOffset = Math.floor(totalMin / 1440);
+      const dt = new Date(baseDate.getTime() + (9 + dayOffset * 24) * 60 * 60 * 1000);
+      labels.push(`${dt.getUTCMonth() + 1}/${dt.getUTCDate()}`);
+    } else if (totalMin % labelInterval === 0) {
+      const h = String(Math.floor(totalMin / 60) % 24).padStart(2, '0');
+      const m = String(Math.round(totalMin % 60)).padStart(2, '0');
+      labels.push(`${h}:${m}`);
+    } else {
+      labels.push('');
+    }
   }
   return labels;
 }
@@ -120,14 +143,14 @@ function destroyChart(canvasId) {
 }
 
 // 潮位グラフを描画
-function drawChart(canvasId, tideData, astroData, currentIdx, intervalMin, startMin = 0) {
+function drawChart(canvasId, tideData, astroData, currentIdx, intervalMin, startMin = 0, baseDate = null) {
   const el = document.getElementById(canvasId);
   if (!el) return;
   destroyChart(canvasId);
   if (!window._charts) window._charts = {};
 
   const count = tideData.length;
-  const labels = buildTimeLabels(intervalMin, count, startMin);
+  const labels = buildTimeLabels(intervalMin, count, startMin, baseDate);
   const tideWithNull = tideData.map(v => (v === null || v === 32767) ? null : v);
 
   window._charts[canvasId] = new Chart(el.getContext('2d'), {
@@ -192,14 +215,14 @@ function drawChart(canvasId, tideData, astroData, currentIdx, intervalMin, start
 }
 
 // 潮位偏差グラフを描画（観測 − 天文）
-function drawDeviationChart(canvasId, deviationData, currentIdx, intervalMin, startMin = 0) {
+function drawDeviationChart(canvasId, deviationData, currentIdx, intervalMin, startMin = 0, baseDate = null) {
   const el = document.getElementById(canvasId);
   if (!el || !deviationData) return;
   destroyChart(canvasId);
   if (!window._charts) window._charts = {};
 
   const count = deviationData.length;
-  const labels = buildTimeLabels(intervalMin, count, startMin);
+  const labels = buildTimeLabels(intervalMin, count, startMin, baseDate);
 
   window._charts[canvasId] = new Chart(el.getContext('2d'), {
     type: 'bar',
@@ -317,6 +340,11 @@ async function loadStation(station, dateStr, year, mmdd, currentRawIdx, prevDate
     ? (astroYesterday ? [...astroYesterday, ...astroToday] : astroToday)
     : null;
 
+  // rawデータ起点のJST 0:00
+  const rawBaseDate = yesterdayTide.length > 0
+    ? getJSTMidnight(prevDateStr)
+    : getJSTMidnight(dateStr);
+
   // rawデータを保存（ズーム再描画用）
   if (!window._stationRaw) window._stationRaw = {};
   window._stationRaw[station.code] = {
@@ -324,6 +352,7 @@ async function loadStation(station, dateStr, year, mmdd, currentRawIdx, prevDate
     astroHourly: combinedAstroHourly,
     todayOffset,
     currentRawIdx: combinedCurrentRawIdx,
+    baseDate: rawBaseDate,
   };
 
   // 現在潮位の表示（当日rawデータから直接取得）
@@ -357,9 +386,19 @@ function redrawStation(code, mode) {
   const intervalMin = modeConf.stepSec / 60;
   const count = Math.round(modeConf.hours * 60 / intervalMin);
 
-  // 現在を終点として過去方向に表示
   const rawEnd = raw.currentRawIdx;
-  const rawStart = Math.max(0, rawEnd - (count - 1) * step);
+  let rawStart, currentDisplayIdx;
+
+  if (modeConf.centered) {
+    // 現在を中心に前後に表示（±12h など）
+    const halfPoints = Math.floor(count / 2);
+    rawStart = Math.max(0, rawEnd - halfPoints * step);
+    currentDisplayIdx = Math.round((rawEnd - rawStart) / step);
+  } else {
+    // 現在を右端として過去方向に表示
+    rawStart = Math.max(0, rawEnd - (count - 1) * step);
+    currentDisplayIdx = count - 1;
+  }
 
   // rawデータから表示範囲を切り出し
   const tideArray = [];
@@ -369,8 +408,6 @@ function redrawStation(code, mode) {
     tideArray.push((v === null || v === 32767) ? null : v);
   }
 
-  // 現在は常に最右端のインデックス
-  const currentDisplayIdx = count - 1;
   const startMin = rawStart * RAW_SEC / 60;
 
   let astroArray = null;
@@ -383,8 +420,8 @@ function redrawStation(code, mode) {
     ? tideArray.map((v, i) => (v !== null && astroArray[i] !== null) ? v - astroArray[i] : null)
     : null;
 
-  drawChart(`chart-${code}`, tideArray, astroArray, currentDisplayIdx, intervalMin, startMin);
-  drawDeviationChart(`dev-chart-${code}`, deviationArray, currentDisplayIdx, intervalMin, startMin);
+  drawChart(`chart-${code}`, tideArray, astroArray, currentDisplayIdx, intervalMin, startMin, raw.baseDate);
+  drawDeviationChart(`dev-chart-${code}`, deviationArray, currentDisplayIdx, intervalMin, startMin, raw.baseDate);
 }
 
 // ページ全体の初期化
