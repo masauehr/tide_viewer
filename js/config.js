@@ -78,8 +78,9 @@ const ZOOM_MODES = [
   { id: '36h',  label: '36時間',  hours: 36, stepSec: 600, centered: false }, // 10分×216点
   { id: '24h',  label: '24時間',  hours: 24, stepSec: 300, centered: false }, // 5分×288点
   { id: '12h',  label: '12時間',  hours: 12, stepSec: 120, centered: false }, // 2分×360点
-  { id: '±12h', label: '±12時間', hours: 24, stepSec: 300, centered: true  }, // 5分×288点（現在中心）
   { id: '6h',   label: '6時間',   hours: 6,  stepSec:  60, centered: false }, // 1分×360点
+  { id: '±12h', label: '±12時間', hours: 24, stepSec: 300, centered: true  }, // 5分×288点（現在中心）
+  { id: '±6h',  label: '±6時間',  hours: 12, stepSec: 120, centered: true  }, // 2分×360点（現在中心）
   { id: '±3h',  label: '±3時間',  hours: 6,  stepSec:  60, centered: true  }, // 1分×360点（現在中心）
   { id: '±1h',  label: '±1時間',  hours: 2,  stepSec:  30, centered: true  }, // 30秒×240点（現在中心）
 ];

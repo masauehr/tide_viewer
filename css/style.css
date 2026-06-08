@@ -154,8 +154,9 @@ main {
 .global-zoom {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 12px;
   max-width: 1400px;
   margin: 0 auto;
 }
@@ -267,5 +268,21 @@ footer a:hover {
 
   .card-graph {
     height: 150px;
+  }
+
+  /* スマホ：ズームバーはボタンを中央揃えで折り返し */
+  .global-zoom {
+    justify-content: center;
+    padding: 5px 8px;
+    gap: 5px;
+  }
+
+  .zoom-separator {
+    display: none;
+  }
+
+  .zoom-btn {
+    padding: 4px 8px;
+    font-size: 0.78rem;
   }
 }
