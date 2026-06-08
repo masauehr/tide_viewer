@@ -179,7 +179,7 @@ function drawChart(canvasId, tideData, astroData, currentIdx, intervalMin, start
         },
       },
       scales: {
-        x: { ticks: { font: { size: 10 }, maxRotation: 0 }, grid: { color: 'rgba(0,0,0,0.05)' } },
+        x: { ticks: { font: { size: 10 }, maxRotation: 0, autoSkip: false }, grid: { color: 'rgba(0,0,0,0.05)' } },
         y: {
           ticks: { font: { size: 10 } },
           grid: { color: 'rgba(0,0,0,0.07)' },
@@ -243,7 +243,7 @@ function drawDeviationChart(canvasId, deviationData, currentIdx, intervalMin, st
         },
       },
       scales: {
-        x: { ticks: { font: { size: 10 }, maxRotation: 0 }, grid: { color: 'rgba(0,0,0,0.05)' } },
+        x: { ticks: { font: { size: 10 }, maxRotation: 0, autoSkip: false }, grid: { color: 'rgba(0,0,0,0.05)' } },
         y: {
           ticks: { font: { size: 10 } },
           grid: { color: 'rgba(0,0,0,0.07)' },
