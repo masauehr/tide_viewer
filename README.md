@@ -2,6 +2,8 @@
 
 > 詳しくは [tide-viewer.md](tide-viewer.md) を参照。
 
+**Website:** https://masauehr.github.io/tide_viewer/
+
 気象庁の潮位観測データを使って、沖縄県の複数観測所を一覧表示するWebアプリです。
 
 ## スクリーンショット
