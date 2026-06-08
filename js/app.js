@@ -61,9 +61,9 @@ function getJSTMidnight(dateStr) {
 
 // 時刻ラベルを生成（startMinからintervalMin間隔でcount点）
 // baseDate: rawデータ起点の JST 0:00（日付境界の表示に使用）
-function buildTimeLabels(intervalMin, count, startMin = 0, baseDate = null) {
-  // 1時間モード（15秒間隔）は10分おき、それ以外は2時間おき
-  const labelInterval = intervalMin < 1 ? 10 : 120;
+function buildTimeLabels(intervalMin, count, startMin = 0, baseDate = null, totalHours = 24) {
+  // 表示範囲2時間以内は10分おき、それ以外は2時間おき
+  const labelInterval = totalHours <= 2 ? 10 : 120;
 
   // startMin以降で最初にlabelIntervalの倍数になる時刻とその点インデックス
   const firstLabelMin = Math.ceil(startMin / labelInterval) * labelInterval;
@@ -121,14 +121,14 @@ function destroyChart(canvasId) {
 }
 
 // 潮位グラフを描画
-function drawChart(canvasId, tideData, astroData, currentIdx, intervalMin, startMin = 0, baseDate = null) {
+function drawChart(canvasId, tideData, astroData, currentIdx, intervalMin, startMin = 0, baseDate = null, totalHours = 24) {
   const el = document.getElementById(canvasId);
   if (!el) return;
   destroyChart(canvasId);
   if (!window._charts) window._charts = {};
 
   const count = tideData.length;
-  const labels = buildTimeLabels(intervalMin, count, startMin, baseDate);
+  const labels = buildTimeLabels(intervalMin, count, startMin, baseDate, totalHours);
   const tideWithNull = tideData.map(v => (v === null || v === 32767) ? null : v);
 
   window._charts[canvasId] = new Chart(el.getContext('2d'), {
@@ -192,14 +192,14 @@ function drawChart(canvasId, tideData, astroData, currentIdx, intervalMin, start
 }
 
 // 潮位偏差グラフを描画（観測 − 天文）
-function drawDeviationChart(canvasId, deviationData, currentIdx, intervalMin, startMin = 0, baseDate = null) {
+function drawDeviationChart(canvasId, deviationData, currentIdx, intervalMin, startMin = 0, baseDate = null, totalHours = 24) {
   const el = document.getElementById(canvasId);
   if (!el || !deviationData) return;
   destroyChart(canvasId);
   if (!window._charts) window._charts = {};
 
   const count = deviationData.length;
-  const labels = buildTimeLabels(intervalMin, count, startMin, baseDate);
+  const labels = buildTimeLabels(intervalMin, count, startMin, baseDate, totalHours);
 
   window._charts[canvasId] = new Chart(el.getContext('2d'), {
     type: 'line',
@@ -404,8 +404,8 @@ function redrawStation(code, mode) {
     ? tideArray.map((v, i) => (v !== null && astroArray[i] !== null) ? v - astroArray[i] : null)
     : null;
 
-  drawChart(`chart-${code}`, tideArray, astroArray, currentDisplayIdx, intervalMin, startMin, raw.baseDate);
-  drawDeviationChart(`dev-chart-${code}`, deviationArray, currentDisplayIdx, intervalMin, startMin, raw.baseDate);
+  drawChart(`chart-${code}`, tideArray, astroArray, currentDisplayIdx, intervalMin, startMin, raw.baseDate, modeConf.hours);
+  drawDeviationChart(`dev-chart-${code}`, deviationArray, currentDisplayIdx, intervalMin, startMin, raw.baseDate, modeConf.hours);
 }
 
 // ページ全体の初期化

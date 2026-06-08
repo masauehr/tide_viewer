@@ -80,5 +80,6 @@ const ZOOM_MODES = [
   { id: '12h',  label: '12時間',  hours: 12, stepSec: 120, centered: false }, // 2分×360点
   { id: '±12h', label: '±12時間', hours: 24, stepSec: 300, centered: true  }, // 5分×288点（現在中心）
   { id: '6h',   label: '6時間',   hours: 6,  stepSec:  60, centered: false }, // 1分×360点
-  { id: '1h',   label: '1時間',   hours: 1,  stepSec:  15, centered: false }, // 15秒×240点
+  { id: '±3h',  label: '±3時間',  hours: 6,  stepSec:  60, centered: true  }, // 1分×360点（現在中心）
+  { id: '±1h',  label: '±1時間',  hours: 2,  stepSec:  30, centered: true  }, // 30秒×240点（現在中心）
 ];
