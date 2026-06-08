@@ -166,6 +166,11 @@ main {
   white-space: nowrap;
 }
 
+/* ±ボタングループを右端に寄せるセパレータ */
+.zoom-separator {
+  margin-left: auto;
+}
+
 /* ズームボタン（グローバル・個別共通） */
 .zoom-btn {
   padding: 4px 12px;

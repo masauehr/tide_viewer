@@ -62,10 +62,13 @@ function getJSTMidnight(dateStr) {
 // 時刻ラベルを生成（startMinからintervalMin間隔でcount点）
 // baseDate: rawデータ起点の JST 0:00（日付境界の表示に使用）
 function buildTimeLabels(intervalMin, count, startMin = 0, baseDate = null, totalHours = 24) {
-  // 表示範囲2時間以内は10分おき、それ以外は2時間おき
-  const labelInterval = totalHours <= 2 ? 10 : 120;
+  // 表示範囲に応じてラベル間隔を決定
+  let labelInterval;
+  if (totalHours <= 2)       labelInterval = 10;  // ±1時間: 10分おき
+  else if (totalHours <= 6)  labelInterval = 60;  // 6時間・±3時間: 1時間おき
+  else if (totalHours <= 12) labelInterval = 120; // 12時間: 2時間おき
+  else                       labelInterval = 240; // 24時間以上: 4時間おき
 
-  // startMin以降で最初にlabelIntervalの倍数になる時刻とその点インデックス
   const firstLabelMin = Math.ceil(startMin / labelInterval) * labelInterval;
   const firstLabelI = Math.round((firstLabelMin - startMin) / intervalMin);
   const stepsPerLabel = Math.round(labelInterval / intervalMin);
@@ -75,20 +78,18 @@ function buildTimeLabels(intervalMin, count, startMin = 0, baseDate = null, tota
     const totalMin = startMin + i * intervalMin;
     const prevTotalMin = startMin + (i - 1) * intervalMin;
 
-    // 日付境界：前の点と日が変わる場合は M/D を表示
+    // 日付境界: ラベル非表示・グリッド線を濃い黒にするためのマーカー
     const isDayBoundary = baseDate && i > 0 &&
       Math.floor(totalMin / 1440) > Math.floor(prevTotalMin / 1440);
 
     if (isDayBoundary) {
-      const dayOffset = Math.floor(totalMin / 1440);
-      const dt = new Date(baseDate.getTime() + (9 + dayOffset * 24) * 60 * 60 * 1000);
-      labels.push(`${dt.getUTCMonth() + 1}/${dt.getUTCDate()}`);
+      labels.push('DATE');
     } else if (i >= firstLabelI && (i - firstLabelI) % stepsPerLabel === 0) {
-      // ラベルは端数を排除した正確な時刻を表示
       const labelMin = firstLabelMin + Math.round((i - firstLabelI) / stepsPerLabel) * labelInterval;
-      const h = String(Math.floor(labelMin / 60) % 24).padStart(2, '0');
+      const h = String(Math.floor(labelMin / 60) % 24);
       const m = String(labelMin % 60).padStart(2, '0');
-      labels.push(`${h}:${m}`);
+      // 分が00の場合は時のみ表示
+      labels.push(m === '00' ? h : `${h}:${m}`);
     } else {
       labels.push('');
     }
@@ -130,6 +131,21 @@ function drawChart(canvasId, tideData, astroData, currentIdx, intervalMin, start
   const count = tideData.length;
   const labels = buildTimeLabels(intervalMin, count, startMin, baseDate, totalHours);
   const tideWithNull = tideData.map(v => (v === null || v === 32767) ? null : v);
+
+  // ±1時間以外のモードでは横軸右下に「時」単位を表示
+  const xUnitPlugins = totalHours > 2 ? [{
+    id: 'xAxisUnit',
+    afterDraw: (chart) => {
+      const ctx = chart.ctx;
+      const xScale = chart.scales.x;
+      ctx.save();
+      ctx.font = '10px sans-serif';
+      ctx.fillStyle = '#718096';
+      ctx.textAlign = 'right';
+      ctx.fillText('時', xScale.right, xScale.bottom);
+      ctx.restore();
+    },
+  }] : [];
 
   window._charts[canvasId] = new Chart(el.getContext('2d'), {
     type: 'line',
@@ -179,7 +195,25 @@ function drawChart(canvasId, tideData, astroData, currentIdx, intervalMin, start
         },
       },
       scales: {
-        x: { ticks: { font: { size: 10 }, maxRotation: 0, autoSkip: false }, grid: { color: 'rgba(0,0,0,0.05)' } },
+        x: {
+          ticks: {
+            font: { size: 10 },
+            maxRotation: 0,
+            autoSkip: false,
+            callback: (value, index) => {
+              const label = labels[index];
+              return label === 'DATE' ? '' : (label || '');
+            },
+          },
+          grid: {
+            color: (ctx) => {
+              const label = labels[ctx.index];
+              if (!label) return 'transparent';
+              if (label === 'DATE') return 'rgba(0,0,0,0.5)';
+              return 'rgba(0,0,0,0.1)';
+            },
+          },
+        },
         y: {
           ticks: { font: { size: 10 } },
           grid: { color: 'rgba(0,0,0,0.07)' },
@@ -187,6 +221,7 @@ function drawChart(canvasId, tideData, astroData, currentIdx, intervalMin, start
         },
       },
     },
+    plugins: xUnitPlugins,
   });
 
 }
@@ -200,6 +235,20 @@ function drawDeviationChart(canvasId, deviationData, currentIdx, intervalMin, st
 
   const count = deviationData.length;
   const labels = buildTimeLabels(intervalMin, count, startMin, baseDate, totalHours);
+
+  const xUnitPlugins = totalHours > 2 ? [{
+    id: 'xAxisUnit',
+    afterDraw: (chart) => {
+      const ctx = chart.ctx;
+      const xScale = chart.scales.x;
+      ctx.save();
+      ctx.font = '10px sans-serif';
+      ctx.fillStyle = '#718096';
+      ctx.textAlign = 'right';
+      ctx.fillText('時', xScale.right, xScale.bottom);
+      ctx.restore();
+    },
+  }] : [];
 
   window._charts[canvasId] = new Chart(el.getContext('2d'), {
     type: 'line',
@@ -243,7 +292,25 @@ function drawDeviationChart(canvasId, deviationData, currentIdx, intervalMin, st
         },
       },
       scales: {
-        x: { ticks: { font: { size: 10 }, maxRotation: 0, autoSkip: false }, grid: { color: 'rgba(0,0,0,0.05)' } },
+        x: {
+          ticks: {
+            font: { size: 10 },
+            maxRotation: 0,
+            autoSkip: false,
+            callback: (value, index) => {
+              const label = labels[index];
+              return label === 'DATE' ? '' : (label || '');
+            },
+          },
+          grid: {
+            color: (ctx) => {
+              const label = labels[ctx.index];
+              if (!label) return 'transparent';
+              if (label === 'DATE') return 'rgba(0,0,0,0.5)';
+              return 'rgba(0,0,0,0.1)';
+            },
+          },
+        },
         y: {
           ticks: { font: { size: 10 } },
           grid: { color: 'rgba(0,0,0,0.07)' },
@@ -251,6 +318,7 @@ function drawDeviationChart(canvasId, deviationData, currentIdx, intervalMin, st
         },
       },
     },
+    plugins: xUnitPlugins,
   });
 
 }
