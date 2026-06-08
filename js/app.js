@@ -307,7 +307,7 @@ async function loadStation(station, dateStr, year, mmdd, currentRawIdx, prevDate
   const yesterdayTide = prevObsResult.status === 'fulfilled' ? prevObsResult.value.tide : [];
   const combinedTide = [...yesterdayTide, ...todayTide];
   const todayOffset = yesterdayTide.length;
-  const combinedCurrentRawIdx = todayOffset + currentRawIdx;
+  const combinedCurrentRawIdx = todayOffset + Math.min(currentRawIdx, todayTide.length - 1);
 
   // 天文潮位（前日 + 当日 + 翌日を結合）
   // 同一年ファイルに全日分が含まれるため追加取得不要
@@ -339,17 +339,18 @@ async function loadStation(station, dateStr, year, mmdd, currentRawIdx, prevDate
     baseDate: rawBaseDate,
   };
 
-  // 現在潮位の表示（当日rawデータから直接取得）
-  const curVal = currentRawIdx < todayTide.length ? todayTide[currentRawIdx] : null;
+  // 現在潮位の表示（データがない場合は最新データのインデックスを使用）
+  const actualRawIdx = Math.min(currentRawIdx, todayTide.length - 1);
+  const curVal = actualRawIdx >= 0 ? todayTide[actualRawIdx] : null;
   const currentEl = document.getElementById(`current-${station.code}`);
   if (currentEl) {
     currentEl.textContent = (curVal === null || curVal === 32767) ? '--' : curVal;
   }
 
-  // 時刻表示
+  // 時刻表示（実際のデータ時刻を表示）
   const timeEl = document.getElementById(`time-${station.code}`);
   if (timeEl) {
-    const totalMin = currentRawIdx * 15 / 60;
+    const totalMin = actualRawIdx * 15 / 60;
     const h = String(Math.floor(totalMin / 60)).padStart(2, '0');
     const m = String(Math.round(totalMin % 60)).padStart(2, '0');
     timeEl.textContent = `${h}:${m} 時点`;
