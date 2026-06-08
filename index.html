@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>沖縄県 潮位観測情報</title>
+  <link rel="stylesheet" href="css/style.css">
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>沖縄県 潮位観測情報</h1>
+    <p class="subtitle">
+      気象庁 検潮所データ（15分間隔）
+      <span id="basetime"></span>
+    </p>
+    <p class="data-source">
+      データ出典：<a href="https://www.jma.go.jp/bosai/tidelevel/" target="_blank" rel="noopener">気象庁 潮位観測情報</a>
+    </p>
+  </header>
+
+  <main>
+    <div id="status-message" class="status-loading">データを読み込み中...</div>
+    <div id="station-grid" class="station-grid"></div>
+  </main>
+
+  <footer>
+    <p>
+      データ提供：<a href="https://www.jma.go.jp/" target="_blank" rel="noopener">気象庁</a>
+      ／ 単位：cm（TP：東京湾平均海面基準）
+    </p>
+  </footer>
+
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
