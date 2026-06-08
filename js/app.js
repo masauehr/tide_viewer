@@ -71,18 +71,21 @@ function renderModalBody() {
   const body = document.getElementById('modal-body');
 
   body.innerHTML = prefGroups.map(({ pref, stations }) => {
-    const selectedCount = stations.filter(s => currentCodes.has(s.code)).length;
-    const isOpen = selectedCount > 0;
+    const sel = stations.filter(s => currentCodes.has(s.code)).length;
+    const isOpen = sel > 0;
     return `
       <details class="pref-group" ${isOpen ? 'open' : ''}>
         <summary class="pref-summary">
+          <input type="checkbox" class="pref-check" data-pref="${pref}"
+            ${sel === stations.length ? 'checked' : ''}>
           <span class="pref-name">${pref}</span>
-          <span class="pref-count" data-pref="${pref}">${selectedCount}/${stations.length}</span>
+          <span class="pref-count" data-pref="${pref}">${sel}/${stations.length}</span>
         </summary>
         <div class="pref-stations">
           ${stations.map(st => `
             <label class="station-check">
-              <input type="checkbox" name="station" value="${st.code}" ${currentCodes.has(st.code) ? 'checked' : ''}>
+              <input type="checkbox" name="station" value="${st.code}"
+                data-pref="${pref}" ${currentCodes.has(st.code) ? 'checked' : ''}>
               <span class="check-name">${st.name}</span>
               <span class="check-addr">${st.addr}</span>
             </label>
@@ -92,23 +95,56 @@ function renderModalBody() {
     `;
   }).join('');
 
-  // チェック変更でカウント更新
-  body.addEventListener('change', updateModalCount);
+  // indeterminate 状態を初期設定
+  prefGroups.forEach(({ pref, stations }) => {
+    const sel = stations.filter(s => currentCodes.has(s.code)).length;
+    const cb = body.querySelector(`.pref-check[data-pref="${pref}"]`);
+    if (cb) cb.indeterminate = sel > 0 && sel < stations.length;
+  });
+
+  // 都道府県チェック：details のトグルを起こさずに処理
+  body.addEventListener('click', (e) => {
+    if (!e.target.classList.contains('pref-check')) return;
+    e.stopPropagation();
+    const pref = e.target.dataset.pref;
+    const checked = e.target.checked;
+    e.target.indeterminate = false;
+    body.querySelectorAll(`input[name="station"][data-pref="${pref}"]`).forEach(cb => {
+      cb.checked = checked;
+    });
+    updateModalCount();
+  });
+
+  // 観測所チェック：都道府県チェックの状態を同期
+  body.addEventListener('change', (e) => {
+    if (e.target.name !== 'station') return;
+    syncPrefCheck(e.target.dataset.pref);
+    updateModalCount();
+  });
+
   updateModalCount();
+}
+
+function syncPrefCheck(pref) {
+  const body = document.getElementById('modal-body');
+  const stCbs = Array.from(body.querySelectorAll(`input[name="station"][data-pref="${pref}"]`));
+  const checkedCount = stCbs.filter(c => c.checked).length;
+  const prefCb = body.querySelector(`.pref-check[data-pref="${pref}"]`);
+  if (!prefCb) return;
+  prefCb.checked = checkedCount === stCbs.length;
+  prefCb.indeterminate = checkedCount > 0 && checkedCount < stCbs.length;
 }
 
 function updateModalCount() {
   const checks = document.querySelectorAll('#modal-body input[name="station"]:checked');
   document.getElementById('modal-count').textContent = `${checks.length}局選択中`;
 
-  // 都道府県ごとのカウントを更新
   prefGroups.forEach(({ pref, stations }) => {
     const el = document.querySelector(`.pref-count[data-pref="${pref}"]`);
     if (!el) return;
-    const checked = stations.filter(st => {
-      const cb = document.querySelector(`input[name="station"][value="${st.code}"]`);
-      return cb?.checked;
-    }).length;
+    const checked = stations.filter(st =>
+      document.querySelector(`input[name="station"][value="${st.code}"]`)?.checked
+    ).length;
     el.textContent = `${checked}/${stations.length}`;
   });
 }
@@ -700,6 +736,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll('#modal-body input[name="station"]').forEach(cb => {
       cb.checked = DEFAULT_STATION_CODES.includes(cb.value);
     });
+    prefGroups.forEach(({ pref }) => syncPrefCheck(pref));
     updateModalCount();
   });
 

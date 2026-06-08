@@ -307,8 +307,16 @@ body.modal-open {
 }
 
 .pref-summary::-webkit-details-marker { display: none; }
-.pref-summary::before { content: '▶'; font-size: 0.65rem; color: #a0aec0; transition: transform 0.15s; }
+.pref-summary::before { content: '▶'; font-size: 0.65rem; color: #a0aec0; transition: transform 0.15s; flex-shrink: 0; }
 details[open] > .pref-summary::before { transform: rotate(90deg); }
+
+.pref-check {
+  flex-shrink: 0;
+  accent-color: #3182ce;
+  cursor: pointer;
+  width: 15px;
+  height: 15px;
+}
 
 .pref-name {
   font-size: 0.88rem;
