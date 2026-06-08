@@ -62,13 +62,8 @@ function getJSTMidnight(dateStr) {
 // 時刻ラベルを生成（startMinからintervalMin間隔でcount点）
 // baseDate: rawデータ起点の JST 0:00（日付境界の表示に使用）
 function buildTimeLabels(intervalMin, count, startMin = 0, baseDate = null) {
-  // 表示間隔の決定
-  let labelInterval;
-  if (intervalMin >= 10) labelInterval = 120;
-  else if (intervalMin >= 5) labelInterval = 60;
-  else if (intervalMin >= 2) labelInterval = 30;
-  else if (intervalMin >= 1) labelInterval = 15;
-  else labelInterval = 10;
+  // 1時間モード（15秒間隔）は10分おき、それ以外は2時間おき
+  const labelInterval = intervalMin < 1 ? 10 : 120;
 
   // startMin以降で最初にlabelIntervalの倍数になる時刻とその点インデックス
   const firstLabelMin = Math.ceil(startMin / labelInterval) * labelInterval;
@@ -117,31 +112,6 @@ function interpolateAstro(astroHourly, count, intervalMin, startMin = 0) {
   return result;
 }
 
-// 現在時刻の縦線プラグインを登録・描画
-function registerCurrentLinePlugin(chart, canvasId, currentIdx, count) {
-  if (currentIdx < 0 || currentIdx >= count) return;
-  const plugin = {
-    id: 'currentLine_' + canvasId,
-    afterDraw(c) {
-      const ctx = c.ctx;
-      const xScale = c.scales.x;
-      const yScale = c.scales.y;
-      const x = xScale.getPixelForValue(currentIdx);
-      ctx.save();
-      ctx.beginPath();
-      ctx.setLineDash([5, 3]);
-      ctx.strokeStyle = CHART_COLORS.current;
-      ctx.lineWidth = 2;
-      ctx.moveTo(x, yScale.top);
-      ctx.lineTo(x, yScale.bottom);
-      ctx.stroke();
-      ctx.restore();
-    },
-  };
-  Chart.register(plugin);
-  chart.update();
-}
-
 // 共通のChart破棄処理
 function destroyChart(canvasId) {
   if (window._charts?.[canvasId]) {
@@ -187,16 +157,6 @@ function drawChart(canvasId, tideData, astroData, currentIdx, intervalMin, start
           borderDash: [4, 4],
           tension: 0.3,
         }] : []),
-        // 現在時刻の縦線を凡例に表示するためのダミーデータセット
-        {
-          label: '現在時刻',
-          data: [],
-          borderColor: CHART_COLORS.current,
-          backgroundColor: 'transparent',
-          borderWidth: 2,
-          borderDash: [5, 3],
-          pointRadius: 0,
-        },
       ],
     },
     options: {
@@ -214,10 +174,7 @@ function drawChart(canvasId, tideData, astroData, currentIdx, intervalMin, start
               const m = String(Math.round(totalMin % 60)).padStart(2, '0');
               return `${h}:${m}`;
             },
-            label: (item) => {
-              if (item.dataset.data.length === 0) return null; // ダミーデータセット非表示
-              return item.parsed.y === null ? null : `${item.dataset.label}: ${item.parsed.y} cm`;
-            },
+            label: (item) => item.parsed.y === null ? null : `${item.dataset.label}: ${item.parsed.y} cm`,
           },
         },
       },
@@ -232,7 +189,6 @@ function drawChart(canvasId, tideData, astroData, currentIdx, intervalMin, start
     },
   });
 
-  registerCurrentLinePlugin(window._charts[canvasId], canvasId, currentIdx, count);
 }
 
 // 潮位偏差グラフを描画（観測 − 天文）
@@ -261,16 +217,6 @@ function drawDeviationChart(canvasId, deviationData, currentIdx, intervalMin, st
           spanGaps: false,
           tension: 0.3,
         },
-        // 現在時刻の縦線を凡例に表示するためのダミーデータセット
-        {
-          label: '現在時刻',
-          data: [],
-          borderColor: CHART_COLORS.current,
-          backgroundColor: 'transparent',
-          borderWidth: 2,
-          borderDash: [5, 3],
-          pointRadius: 0,
-        },
       ],
     },
     options: {
@@ -289,7 +235,6 @@ function drawDeviationChart(canvasId, deviationData, currentIdx, intervalMin, st
               return `${h}:${m}`;
             },
             label: (item) => {
-              if (item.dataset.data.length === 0) return null;
               if (item.parsed.y === null) return null;
               const sign = item.parsed.y >= 0 ? '+' : '';
               return `潮位偏差: ${sign}${item.parsed.y} cm`;
@@ -308,7 +253,6 @@ function drawDeviationChart(canvasId, deviationData, currentIdx, intervalMin, st
     },
   });
 
-  registerCurrentLinePlugin(window._charts[canvasId], canvasId, currentIdx, count);
 }
 
 // 観測所カードのHTMLを生成
@@ -343,7 +287,7 @@ function createStationCard(station) {
 }
 
 // 観測所のデータを読み込んで表示
-async function loadStation(station, dateStr, year, mmdd, currentRawIdx, prevDateStr, prevMmdd) {
+async function loadStation(station, dateStr, year, mmdd, currentRawIdx, prevDateStr, prevMmdd, tomorrowMmdd) {
   const [prevObsResult, obsResult, astroResult] = await Promise.allSettled([
     fetchJMA(obsPath(prevDateStr, station.code)),
     fetchJMA(obsPath(dateStr, station.code)),
@@ -365,13 +309,20 @@ async function loadStation(station, dateStr, year, mmdd, currentRawIdx, prevDate
   const todayOffset = yesterdayTide.length;
   const combinedCurrentRawIdx = todayOffset + currentRawIdx;
 
-  // 天文潮位（前日 + 当日を結合）
+  // 天文潮位（前日 + 当日 + 翌日を結合）
+  // 同一年ファイルに全日分が含まれるため追加取得不要
   const astroValue = astroResult.status === 'fulfilled' ? astroResult.value : null;
-  const astroToday = astroValue?.tide?.[mmdd] ?? null;
-  const astroYesterday = astroValue?.tide?.[prevMmdd] ?? null;
-  const combinedAstroHourly = astroToday
-    ? (astroYesterday ? [...astroYesterday, ...astroToday] : astroToday)
-    : null;
+  const astroToday    = astroValue?.tide?.[mmdd]         ?? null;
+  const astroYesterday = astroValue?.tide?.[prevMmdd]    ?? null;
+  const astroTomorrow  = astroValue?.tide?.[tomorrowMmdd] ?? null;
+  let combinedAstroHourly = null;
+  if (astroToday) {
+    const parts = [];
+    if (astroYesterday) parts.push(...astroYesterday);
+    parts.push(...astroToday);
+    if (astroTomorrow) parts.push(...astroTomorrow);
+    combinedAstroHourly = parts;
+  }
 
   // rawデータ起点のJST 0:00
   const rawBaseDate = yesterdayTide.length > 0
@@ -470,10 +421,12 @@ async function init() {
     const year = getYearJST(baseTime);
     const mmdd = getMMDD(baseTime);
 
-    // 前日の日付
+    // 前日・翌日の日付
     const prevDate = new Date(baseTime.getTime() - 24 * 60 * 60 * 1000);
     const prevDateStr = formatDateJST(prevDate);
     const prevMmdd = getMMDD(prevDate);
+    const tomorrowDate = new Date(baseTime.getTime() + 24 * 60 * 60 * 1000);
+    const tomorrowMmdd = getMMDD(tomorrowDate);
 
     // 現在のrawインデックス（15秒単位）
     const currentRawIdx = getCurrentRawIndex(baseTime);
@@ -494,7 +447,7 @@ async function init() {
 
     await Promise.all(
       STATIONS.map(station =>
-        loadStation(station, dateStr, year, mmdd, currentRawIdx, prevDateStr, prevMmdd)
+        loadStation(station, dateStr, year, mmdd, currentRawIdx, prevDateStr, prevMmdd, tomorrowMmdd)
       )
     );
 
