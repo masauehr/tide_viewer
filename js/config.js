@@ -63,9 +63,10 @@ const STATIONS = [
 
 // グラフの色設定
 const CHART_COLORS = {
-  tide: '#2196F3',      // 観測潮位
-  astro: '#FF9800',     // 天文潮位
-  current: '#F44336',  // 現在位置
+  tide:      '#2196F3', // 観測潮位
+  astro:     '#FF9800', // 天文潮位
+  current:   '#F44336', // 現在時刻
+  deviation: '#4CAF50', // 潮位偏差
 };
 
 // データ更新間隔（ミリ秒）

@@ -62,12 +62,18 @@ function getJSTMidnight(dateStr) {
 // 時刻ラベルを生成（startMinからintervalMin間隔でcount点）
 // baseDate: rawデータ起点の JST 0:00（日付境界の表示に使用）
 function buildTimeLabels(intervalMin, count, startMin = 0, baseDate = null) {
+  // 表示間隔の決定
   let labelInterval;
   if (intervalMin >= 10) labelInterval = 120;
   else if (intervalMin >= 5) labelInterval = 60;
   else if (intervalMin >= 2) labelInterval = 30;
   else if (intervalMin >= 1) labelInterval = 15;
   else labelInterval = 10;
+
+  // startMin以降で最初にlabelIntervalの倍数になる時刻とその点インデックス
+  const firstLabelMin = Math.ceil(startMin / labelInterval) * labelInterval;
+  const firstLabelI = Math.round((firstLabelMin - startMin) / intervalMin);
+  const stepsPerLabel = Math.round(labelInterval / intervalMin);
 
   const labels = [];
   for (let i = 0; i < count; i++) {
@@ -82,9 +88,11 @@ function buildTimeLabels(intervalMin, count, startMin = 0, baseDate = null) {
       const dayOffset = Math.floor(totalMin / 1440);
       const dt = new Date(baseDate.getTime() + (9 + dayOffset * 24) * 60 * 60 * 1000);
       labels.push(`${dt.getUTCMonth() + 1}/${dt.getUTCDate()}`);
-    } else if (totalMin % labelInterval === 0) {
-      const h = String(Math.floor(totalMin / 60) % 24).padStart(2, '0');
-      const m = String(Math.round(totalMin % 60)).padStart(2, '0');
+    } else if (i >= firstLabelI && (i - firstLabelI) % stepsPerLabel === 0) {
+      // ラベルは端数を排除した正確な時刻を表示
+      const labelMin = firstLabelMin + Math.round((i - firstLabelI) / stepsPerLabel) * labelInterval;
+      const h = String(Math.floor(labelMin / 60) % 24).padStart(2, '0');
+      const m = String(labelMin % 60).padStart(2, '0');
       labels.push(`${h}:${m}`);
     } else {
       labels.push('');
@@ -179,6 +187,16 @@ function drawChart(canvasId, tideData, astroData, currentIdx, intervalMin, start
           borderDash: [4, 4],
           tension: 0.3,
         }] : []),
+        // 現在時刻の縦線を凡例に表示するためのダミーデータセット
+        {
+          label: '現在時刻',
+          data: [],
+          borderColor: CHART_COLORS.current,
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          borderDash: [5, 3],
+          pointRadius: 0,
+        },
       ],
     },
     options: {
@@ -196,7 +214,10 @@ function drawChart(canvasId, tideData, astroData, currentIdx, intervalMin, start
               const m = String(Math.round(totalMin % 60)).padStart(2, '0');
               return `${h}:${m}`;
             },
-            label: (item) => item.parsed.y === null ? null : `${item.dataset.label}: ${item.parsed.y} cm`,
+            label: (item) => {
+              if (item.dataset.data.length === 0) return null; // ダミーデータセット非表示
+              return item.parsed.y === null ? null : `${item.dataset.label}: ${item.parsed.y} cm`;
+            },
           },
         },
       },
@@ -225,19 +246,32 @@ function drawDeviationChart(canvasId, deviationData, currentIdx, intervalMin, st
   const labels = buildTimeLabels(intervalMin, count, startMin, baseDate);
 
   window._charts[canvasId] = new Chart(el.getContext('2d'), {
-    type: 'bar',
+    type: 'line',
     data: {
       labels,
-      datasets: [{
-        label: '潮位偏差 (cm)',
-        data: deviationData,
-        backgroundColor: deviationData.map(v =>
-          v === null ? 'transparent' : v >= 0 ? 'rgba(244,67,54,0.6)' : 'rgba(33,150,243,0.6)'
-        ),
-        borderWidth: 0,
-        barPercentage: 1.0,
-        categoryPercentage: 1.0,
-      }],
+      datasets: [
+        {
+          label: '潮位偏差 (cm)',
+          data: deviationData,
+          borderColor: CHART_COLORS.deviation,
+          backgroundColor: 'rgba(76,175,80,0.1)',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          fill: true,
+          spanGaps: false,
+          tension: 0.3,
+        },
+        // 現在時刻の縦線を凡例に表示するためのダミーデータセット
+        {
+          label: '現在時刻',
+          data: [],
+          borderColor: CHART_COLORS.current,
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          borderDash: [5, 3],
+          pointRadius: 0,
+        },
+      ],
     },
     options: {
       responsive: true,
@@ -255,6 +289,7 @@ function drawDeviationChart(canvasId, deviationData, currentIdx, intervalMin, st
               return `${h}:${m}`;
             },
             label: (item) => {
+              if (item.dataset.data.length === 0) return null;
               if (item.parsed.y === null) return null;
               const sign = item.parsed.y >= 0 ? '+' : '';
               return `潮位偏差: ${sign}${item.parsed.y} cm`;
@@ -331,8 +366,6 @@ async function loadStation(station, dateStr, year, mmdd, currentRawIdx, prevDate
   const combinedCurrentRawIdx = todayOffset + currentRawIdx;
 
   // 天文潮位（前日 + 当日を結合）
-  // 前日ありの場合: hourPos=0が前日0時、hourPos=24が当日0時
-  // 前日なしの場合: hourPos=0が当日0時
   const astroValue = astroResult.status === 'fulfilled' ? astroResult.value : null;
   const astroToday = astroValue?.tide?.[mmdd] ?? null;
   const astroYesterday = astroValue?.tide?.[prevMmdd] ?? null;
