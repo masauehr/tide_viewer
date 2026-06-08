@@ -21,6 +21,7 @@
   </header>
 
   <div class="global-zoom-bar">
+    <div class="global-zoom-bar-inner">
     <div id="global-zoom" class="global-zoom">
       <span class="global-zoom-label">表示範囲（時間）：</span>
       <button class="zoom-btn" data-mode="36h">36</button>
@@ -32,6 +33,24 @@
       <button class="zoom-btn" data-mode="±6h">±6</button>
       <button class="zoom-btn" data-mode="±3h">±3</button>
       <button class="zoom-btn" data-mode="±1h">±1</button>
+    </div>
+    <button id="select-stations-btn" class="select-btn">観測所を選択</button>
+    </div>
+  </div>
+
+  <!-- 観測所選択モーダル -->
+  <div id="station-modal" class="modal-overlay" hidden>
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title">観測所を選択</h3>
+        <span id="modal-count" class="modal-count">0局選択中</span>
+        <button id="modal-close-btn" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-footer">
+        <button id="modal-reset-btn" class="modal-reset">沖縄（デフォルト）</button>
+        <button id="modal-apply-btn" class="modal-apply">適用</button>
+      </div>
     </div>
   </div>
 

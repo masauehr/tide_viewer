@@ -1,3 +1,135 @@
+// 全国観測所マップ { code: stationObj }
+let allStationsMap = {};
+// 都道府県グループ [{ pref, prefCode, stations[] }]
+let prefGroups = [];
+
+const LS_KEY = 'tideviewer_stations';
+
+// 全国観測所を tide_area.json から読み込み
+async function loadAllStations() {
+  const data = await fetchJMA('const/tide_area.json');
+  const byPref = {};
+  const prefCodeMap = {};
+
+  for (const [areaCode, areaInfo] of Object.entries(data)) {
+    for (const c30 of areaInfo.class30s || []) {
+      for (const st of c30.stations || []) {
+        const addr = st.addr || '';
+        const pref = addr.split(' ')[0] || '不明';
+        const jma_url = `https://www.jma.go.jp/bosai/tidelevel/#area_type=class20s&area_code=${areaCode}&point_code=${st.code}&filter=0&class30s=${c30.code}`;
+        const stObj = { code: st.code, name: st.name, addr, pref, area_code: areaCode, class30: c30.code, jma_url };
+        allStationsMap[st.code] = stObj;
+        if (!byPref[pref]) { byPref[pref] = []; prefCodeMap[pref] = areaCode.slice(0, 2); }
+        byPref[pref].push(stObj);
+      }
+    }
+  }
+
+  prefGroups = Object.entries(byPref)
+    .map(([pref, stations]) => ({ pref, prefCode: prefCodeMap[pref] || '99', stations }))
+    .sort((a, b) => a.prefCode.localeCompare(b.prefCode));
+}
+
+// localStorage から選択コードを読み込み（未設定はデフォルト）
+function loadSelectedCodes() {
+  try {
+    const saved = localStorage.getItem(LS_KEY);
+    if (saved) {
+      const codes = JSON.parse(saved);
+      if (Array.isArray(codes) && codes.length > 0) return codes;
+    }
+  } catch (e) { /* 無視 */ }
+  return [...DEFAULT_STATION_CODES];
+}
+
+// localStorage に保存
+function saveSelectedCodes(codes) {
+  localStorage.setItem(LS_KEY, JSON.stringify(codes));
+}
+
+// 現在選択中の観測所オブジェクトを取得
+function getSelectedStations() {
+  return loadSelectedCodes().map(c => allStationsMap[c]).filter(Boolean);
+}
+
+// --- モーダル ---
+
+function openStationModal() {
+  const modal = document.getElementById('station-modal');
+  renderModalBody();
+  modal.hidden = false;
+  document.body.classList.add('modal-open');
+}
+
+function closeStationModal() {
+  document.getElementById('station-modal').hidden = true;
+  document.body.classList.remove('modal-open');
+}
+
+function renderModalBody() {
+  const currentCodes = new Set(loadSelectedCodes());
+  const body = document.getElementById('modal-body');
+
+  body.innerHTML = prefGroups.map(({ pref, stations }) => {
+    const selectedCount = stations.filter(s => currentCodes.has(s.code)).length;
+    const isOpen = selectedCount > 0;
+    return `
+      <details class="pref-group" ${isOpen ? 'open' : ''}>
+        <summary class="pref-summary">
+          <span class="pref-name">${pref}</span>
+          <span class="pref-count" data-pref="${pref}">${selectedCount}/${stations.length}</span>
+        </summary>
+        <div class="pref-stations">
+          ${stations.map(st => `
+            <label class="station-check">
+              <input type="checkbox" name="station" value="${st.code}" ${currentCodes.has(st.code) ? 'checked' : ''}>
+              <span class="check-name">${st.name}</span>
+              <span class="check-addr">${st.addr}</span>
+            </label>
+          `).join('')}
+        </div>
+      </details>
+    `;
+  }).join('');
+
+  // チェック変更でカウント更新
+  body.addEventListener('change', updateModalCount);
+  updateModalCount();
+}
+
+function updateModalCount() {
+  const checks = document.querySelectorAll('#modal-body input[name="station"]:checked');
+  document.getElementById('modal-count').textContent = `${checks.length}局選択中`;
+
+  // 都道府県ごとのカウントを更新
+  prefGroups.forEach(({ pref, stations }) => {
+    const el = document.querySelector(`.pref-count[data-pref="${pref}"]`);
+    if (!el) return;
+    const checked = stations.filter(st => {
+      const cb = document.querySelector(`input[name="station"][value="${st.code}"]`);
+      return cb?.checked;
+    }).length;
+    el.textContent = `${checked}/${stations.length}`;
+  });
+}
+
+function applyModalSelection() {
+  const checks = document.querySelectorAll('#modal-body input[name="station"]:checked');
+  const codes = Array.from(checks).map(c => c.value);
+  if (codes.length === 0) { alert('1局以上選択してください'); return; }
+  saveSelectedCodes(codes);
+  closeStationModal();
+  reloadDisplay();
+}
+
+function reloadDisplay() {
+  const grid = document.getElementById('station-grid');
+  grid.innerHTML = '';
+  if (window._charts) { Object.values(window._charts).forEach(c => c.destroy()); window._charts = {}; }
+  window._stationRaw = {};
+  init();
+}
+
 // 日付を YYYYMMDD 形式に変換（JST基準）
 function formatDateJST(date) {
   const jst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
@@ -509,13 +641,14 @@ async function init() {
       basetimeEl.textContent = `（${dateStr.slice(0,4)}/${dateStr.slice(4,6)}/${dateStr.slice(6)} ${hh}:${mm} JST 現在）`;
     }
 
+    const stations = getSelectedStations();
     statusEl.style.display = 'none';
-    STATIONS.forEach(station => {
+    stations.forEach(station => {
       grid.appendChild(createStationCard(station));
     });
 
     await Promise.all(
-      STATIONS.map(station =>
+      stations.map(station =>
         loadStation(station, dateStr, year, mmdd, currentRawIdx, prevDateStr, prevMmdd, tomorrowMmdd)
       )
     );
@@ -542,7 +675,7 @@ function startAutoRefresh() {
 }
 
 // 起動
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   // グローバルズームボタン（一度だけ設定）
   const globalZoom = document.getElementById('global-zoom');
   if (globalZoom) {
@@ -553,10 +686,30 @@ document.addEventListener('DOMContentLoaded', () => {
       globalZoom.querySelectorAll('.zoom-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       window._currentMode = mode;
-      STATIONS.forEach(s => redrawStation(s.code, mode));
+      getSelectedStations().forEach(s => redrawStation(s.code, mode));
     });
   }
 
+  // 観測所選択ボタン
+  document.getElementById('select-stations-btn')?.addEventListener('click', openStationModal);
+
+  // モーダルのボタン
+  document.getElementById('modal-close-btn')?.addEventListener('click', closeStationModal);
+  document.getElementById('modal-apply-btn')?.addEventListener('click', applyModalSelection);
+  document.getElementById('modal-reset-btn')?.addEventListener('click', () => {
+    document.querySelectorAll('#modal-body input[name="station"]').forEach(cb => {
+      cb.checked = DEFAULT_STATION_CODES.includes(cb.value);
+    });
+    updateModalCount();
+  });
+
+  // オーバーレイクリックで閉じる
+  document.getElementById('station-modal')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeStationModal();
+  });
+
+  // 全国観測所リストを先に読み込んでから表示開始
+  await loadAllStations();
   init();
   startAutoRefresh();
 });

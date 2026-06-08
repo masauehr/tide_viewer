@@ -151,14 +151,40 @@ main {
   z-index: 100;
 }
 
+.global-zoom-bar-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
 .global-zoom {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
+  flex: 1;
   gap: 6px;
-  padding: 6px 12px;
-  max-width: 1400px;
-  margin: 0 auto;
+  padding: 6px 0;
+}
+
+/* 観測所選択ボタン */
+.select-btn {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  border: 1px solid #3182ce;
+  border-radius: 4px;
+  background: #ebf8ff;
+  color: #3182ce;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.select-btn:hover {
+  background: #bee3f8;
 }
 
 .global-zoom-label {
@@ -193,6 +219,180 @@ main {
   color: #fff;
   border-color: #3182ce;
 }
+
+/* 観測所選択モーダル */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.modal-overlay[hidden] {
+  display: none;
+}
+
+body.modal-open {
+  overflow: hidden;
+}
+
+.modal-box {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  width: 100%;
+  max-width: 540px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.modal-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1a202c;
+  flex: 1;
+}
+
+.modal-count {
+  font-size: 0.82rem;
+  color: #718096;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  color: #718096;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.modal-close:hover {
+  background: #f7fafc;
+  color: #2d3748;
+}
+
+.modal-body {
+  overflow-y: auto;
+  flex: 1;
+  padding: 8px 16px;
+}
+
+.pref-group {
+  border-bottom: 1px solid #f0f4f8;
+}
+
+.pref-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 2px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.pref-summary::-webkit-details-marker { display: none; }
+.pref-summary::before { content: '▶'; font-size: 0.65rem; color: #a0aec0; transition: transform 0.15s; }
+details[open] > .pref-summary::before { transform: rotate(90deg); }
+
+.pref-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #2d3748;
+  flex: 1;
+}
+
+.pref-count {
+  font-size: 0.78rem;
+  color: #a0aec0;
+}
+
+.pref-stations {
+  padding: 2px 4px 8px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.station-check {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.station-check:hover {
+  background: #f7fafc;
+}
+
+.station-check input {
+  flex-shrink: 0;
+  accent-color: #3182ce;
+  cursor: pointer;
+}
+
+.check-name {
+  font-size: 0.88rem;
+  color: #2d3748;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.check-addr {
+  font-size: 0.75rem;
+  color: #a0aec0;
+}
+
+.modal-footer {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid #e2e8f0;
+  justify-content: flex-end;
+}
+
+.modal-reset {
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+  color: #718096;
+  cursor: pointer;
+  margin-right: auto;
+}
+
+.modal-reset:hover { background: #f7fafc; }
+
+.modal-apply {
+  padding: 6px 20px;
+  font-size: 0.88rem;
+  border: none;
+  border-radius: 6px;
+  background: #3182ce;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.modal-apply:hover { background: #2c5282; }
 
 /* 偏差グラフ */
 .card-deviation {
@@ -271,10 +471,22 @@ footer a:hover {
   }
 
   /* スマホ：ズームバーはボタンを中央揃えで折り返し */
+  .global-zoom-bar-inner {
+    flex-wrap: wrap;
+    padding: 4px 8px;
+    gap: 4px;
+  }
+
   .global-zoom {
     justify-content: center;
-    padding: 5px 8px;
+    padding: 2px 0;
     gap: 5px;
+  }
+
+  .select-btn {
+    width: 100%;
+    text-align: center;
+    padding: 5px 10px;
   }
 
   .zoom-separator {
