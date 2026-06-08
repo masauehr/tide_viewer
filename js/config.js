@@ -70,3 +70,11 @@ const CHART_COLORS = {
 
 // データ更新間隔（ミリ秒）
 const REFRESH_INTERVAL = 5 * 60 * 1000; // 5分
+
+// ズームモード定義（元データは15秒間隔）
+const ZOOM_MODES = [
+  { id: 'day', label: '全日',  hours: 24, stepSec: 900 }, // 15分×96点
+  { id: '6h',  label: '6時間', hours: 6,  stepSec: 300 }, // 5分×72点
+  { id: '2h',  label: '2時間', hours: 2,  stepSec:  60 }, // 1分×120点
+  { id: '1h',  label: '1時間', hours: 1,  stepSec:  30 }, // 30秒×120点
+];

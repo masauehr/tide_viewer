@@ -51,25 +51,31 @@ function getCurrentIndex(baseTime) {
   return Math.min(Math.floor(minutesFromMidnight / 15), 95);
 }
 
-// 時刻ラベルを生成（96点=15分×96=24時間）
-function buildTimeLabels(intervalMin, count) {
+// 時刻ラベルを生成（startMinからintervalMin間隔でcount点）
+function buildTimeLabels(intervalMin, count, startMin = 0) {
+  // 表示間隔に応じてラベル頻度を決定
+  let labelInterval;
+  if (intervalMin >= 15) labelInterval = 180;     // 3時間ごと
+  else if (intervalMin >= 5) labelInterval = 60;  // 1時間ごと
+  else if (intervalMin >= 1) labelInterval = 15;  // 15分ごと
+  else labelInterval = 10;                        // 10分ごと（30秒モード用）
+
   const labels = [];
   for (let i = 0; i < count; i++) {
-    const totalMin = i * intervalMin;
-    const h = String(Math.floor(totalMin / 60)).padStart(2, '0');
-    const m = String(totalMin % 60).padStart(2, '0');
-    // 3時間ごとにラベル表示
-    labels.push(totalMin % 180 === 0 ? `${h}:${m}` : '');
+    const totalMin = startMin + i * intervalMin;
+    const h = String(Math.floor(totalMin / 60) % 24).padStart(2, '0');
+    const m = String(Math.round(totalMin % 60)).padStart(2, '0');
+    labels.push(totalMin % labelInterval === 0 ? `${h}:${m}` : '');
   }
   return labels;
 }
 
-// 天文潮位を1時間→15分間隔に補間（線形補間）
-function interpolateAstro(astroHourly, count, intervalMin) {
-  const stepsPerHour = 60 / intervalMin;
+// 天文潮位を任意間隔に補間（線形補間、startMinから開始）
+function interpolateAstro(astroHourly, count, intervalMin, startMin = 0) {
   const result = [];
   for (let i = 0; i < count; i++) {
-    const hourPos = i / stepsPerHour;
+    const totalMin = startMin + i * intervalMin;
+    const hourPos = totalMin / 60;
     const h0 = Math.floor(hourPos);
     const h1 = Math.min(h0 + 1, astroHourly.length - 1);
     const frac = hourPos - h0;
@@ -81,10 +87,10 @@ function interpolateAstro(astroHourly, count, intervalMin) {
 }
 
 // グラフを描画
-function drawChart(canvasId, tideData, astroData, currentIdx, intervalMin) {
+function drawChart(canvasId, tideData, astroData, currentIdx, intervalMin, startMin = 0) {
   const ctx = document.getElementById(canvasId).getContext('2d');
   const count = tideData.length;
-  const labels = buildTimeLabels(intervalMin, count);
+  const labels = buildTimeLabels(intervalMin, count, startMin);
 
   // 既存グラフを破棄
   if (window._charts && window._charts[canvasId]) {
@@ -204,6 +210,11 @@ function createStationCard(station) {
   const card = document.createElement('div');
   card.className = 'station-card';
   card.id = `card-${station.code}`;
+
+  const zoomBtns = ZOOM_MODES.map((m, i) =>
+    `<button class="zoom-btn${i === 0 ? ' active' : ''}" data-mode="${m.id}">${m.label}</button>`
+  ).join('');
+
   card.innerHTML = `
     <div class="card-header">
       <h2 class="station-name">
@@ -216,6 +227,7 @@ function createStationCard(station) {
       <span class="current-value" id="current-${station.code}">--</span>
       <span class="current-unit">cm</span>
     </div>
+    <div class="zoom-buttons">${zoomBtns}</div>
     <div class="card-graph">
       <canvas id="chart-${station.code}" width="400" height="180"></canvas>
     </div>
@@ -223,6 +235,16 @@ function createStationCard(station) {
       <span class="data-time" id="time-${station.code}"></span>
     </div>
   `;
+
+  // ズームボタンのクリックイベント
+  card.querySelector('.zoom-buttons').addEventListener('click', (e) => {
+    const btn = e.target.closest('.zoom-btn');
+    if (!btn) return;
+    card.querySelectorAll('.zoom-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    redrawStation(station.code, btn.dataset.mode);
+  });
+
   return card;
 }
 
@@ -241,6 +263,15 @@ async function loadStation(station, dateStr, year, mmdd, currentIdx) {
   }
 
   const obs = obsData.value;
+
+  // rawデータを保存（ズーム再描画用）
+  if (!window._stationRaw) window._stationRaw = {};
+  window._stationRaw[station.code] = {
+    tide: obs.tide,
+    astroHourly: astroData.status === 'fulfilled' ? astroData.value.tide?.[mmdd] : null,
+    currentRawIdx: currentIdx * 60,
+  };
+
   // interval はデータの記録間隔（秒単位）
   const intervalSec = obs.interval || 15;
   // グラフは15分単位（96点/日）に間引いて表示する
@@ -334,6 +365,45 @@ async function init() {
   }
 }
 
+// 指定モードでグラフを再描画（ズーム切り替え用）
+function redrawStation(code, mode) {
+  const raw = window._stationRaw?.[code];
+  if (!raw) return;
+
+  const RAW_SEC = 15;
+  const modeConf = ZOOM_MODES.find(m => m.id === mode);
+  const step = Math.round(modeConf.stepSec / RAW_SEC);
+  const intervalMin = modeConf.stepSec / 60;
+  const count = Math.round(modeConf.hours * 60 / intervalMin);
+
+  // 全日は0時始まり、それ以外は現在時刻を中心に表示
+  let rawStart;
+  if (mode === 'day') {
+    rawStart = 0;
+  } else {
+    const halfPoints = Math.floor(count / 2);
+    rawStart = Math.max(0, raw.currentRawIdx - halfPoints * step);
+  }
+
+  // rawデータから表示範囲を切り出し
+  const tideArray = [];
+  for (let i = 0; i < count; i++) {
+    const rawIdx = rawStart + i * step;
+    const v = rawIdx < raw.tide.length ? raw.tide[rawIdx] : null;
+    tideArray.push((v === null || v === 32767) ? null : v);
+  }
+
+  const startMin = rawStart * RAW_SEC / 60;
+  const currentDisplayIdx = Math.round((raw.currentRawIdx - rawStart) / step);
+
+  let astroArray = null;
+  if (raw.astroHourly) {
+    astroArray = interpolateAstro(raw.astroHourly, count, intervalMin, startMin);
+  }
+
+  drawChart(`chart-${code}`, tideArray, astroArray, currentDisplayIdx, intervalMin, startMin);
+}
+
 // 自動更新
 function startAutoRefresh() {
   setInterval(() => {
@@ -343,6 +413,7 @@ function startAutoRefresh() {
       Object.values(window._charts).forEach(c => c.destroy());
       window._charts = {};
     }
+    window._stationRaw = {};
     init();
   }, REFRESH_INTERVAL);
 }

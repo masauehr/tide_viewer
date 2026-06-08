@@ -141,6 +141,35 @@ main {
   color: #718096;
 }
 
+/* ズームボタン */
+.zoom-buttons {
+  display: flex;
+  gap: 6px;
+  padding: 6px 16px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.zoom-btn {
+  padding: 3px 10px;
+  font-size: 0.75rem;
+  border: 1px solid #bee3f8;
+  border-radius: 4px;
+  background: #fff;
+  color: #3182ce;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.zoom-btn:hover {
+  background: #ebf8ff;
+}
+
+.zoom-btn.active {
+  background: #3182ce;
+  color: #fff;
+  border-color: #3182ce;
+}
+
 /* グラフ */
 .card-graph {
   padding: 4px 8px 0;
