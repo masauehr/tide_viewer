@@ -141,17 +141,35 @@ main {
   color: #718096;
 }
 
-/* ズームボタン */
-.zoom-buttons {
-  display: flex;
-  gap: 6px;
-  padding: 6px 16px;
+/* グローバルズームバー */
+.global-zoom-bar {
+  background: #fff;
   border-bottom: 1px solid #e2e8f0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
 
+.global-zoom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.global-zoom-label {
+  font-size: 0.85rem;
+  color: #4a5568;
+  white-space: nowrap;
+}
+
+/* ズームボタン（グローバル・個別共通） */
 .zoom-btn {
-  padding: 3px 10px;
-  font-size: 0.75rem;
+  padding: 4px 12px;
+  font-size: 0.8rem;
   border: 1px solid #bee3f8;
   border-radius: 4px;
   background: #fff;
@@ -168,6 +186,23 @@ main {
   background: #3182ce;
   color: #fff;
   border-color: #3182ce;
+}
+
+/* 偏差グラフ */
+.card-deviation {
+  padding: 0 8px 6px;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.deviation-label {
+  font-size: 0.72rem;
+  color: #a0aec0;
+  padding: 4px 0 2px;
+}
+
+.card-deviation canvas {
+  width: 100% !important;
+  height: 90px !important;
 }
 
 /* グラフ */

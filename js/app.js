@@ -44,21 +44,21 @@ function parseJMATime(timeStr) {
   return new Date(timeStr);
 }
 
-// 現在の表示インデックスを計算（15分単位、0〜95）
-function getCurrentIndex(baseTime) {
+// 現在のrawインデックスを計算（15秒単位）
+function getCurrentRawIndex(baseTime) {
   const jst = new Date(baseTime.getTime() + 9 * 60 * 60 * 1000);
-  const minutesFromMidnight = jst.getUTCHours() * 60 + jst.getUTCMinutes();
-  return Math.min(Math.floor(minutesFromMidnight / 15), 95);
+  const sec = jst.getUTCHours() * 3600 + jst.getUTCMinutes() * 60 + jst.getUTCSeconds();
+  return Math.floor(sec / 15);
 }
 
 // 時刻ラベルを生成（startMinからintervalMin間隔でcount点）
 function buildTimeLabels(intervalMin, count, startMin = 0) {
-  // 表示間隔に応じてラベル頻度を決定
   let labelInterval;
-  if (intervalMin >= 15) labelInterval = 180;     // 3時間ごと
-  else if (intervalMin >= 5) labelInterval = 60;  // 1時間ごと
-  else if (intervalMin >= 1) labelInterval = 15;  // 15分ごと
-  else labelInterval = 10;                        // 10分ごと（30秒モード用）
+  if (intervalMin >= 15) labelInterval = 180;
+  else if (intervalMin >= 5) labelInterval = 60;
+  else if (intervalMin >= 2) labelInterval = 30;
+  else if (intervalMin >= 1) labelInterval = 15;
+  else labelInterval = 10;
 
   const labels = [];
   for (let i = 0; i < count; i++) {
@@ -86,30 +86,51 @@ function interpolateAstro(astroHourly, count, intervalMin, startMin = 0) {
   return result;
 }
 
-// グラフを描画
-function drawChart(canvasId, tideData, astroData, currentIdx, intervalMin, startMin = 0) {
-  const ctx = document.getElementById(canvasId).getContext('2d');
-  const count = tideData.length;
-  const labels = buildTimeLabels(intervalMin, count, startMin);
+// 現在時刻の縦線プラグインを登録・描画
+function registerCurrentLinePlugin(chart, canvasId, currentIdx, count) {
+  if (currentIdx < 0 || currentIdx >= count) return;
+  const plugin = {
+    id: 'currentLine_' + canvasId,
+    afterDraw(c) {
+      const ctx = c.ctx;
+      const xScale = c.scales.x;
+      const yScale = c.scales.y;
+      const x = xScale.getPixelForValue(currentIdx);
+      ctx.save();
+      ctx.beginPath();
+      ctx.setLineDash([5, 3]);
+      ctx.strokeStyle = CHART_COLORS.current;
+      ctx.lineWidth = 2;
+      ctx.moveTo(x, yScale.top);
+      ctx.lineTo(x, yScale.bottom);
+      ctx.stroke();
+      ctx.restore();
+    },
+  };
+  Chart.register(plugin);
+  chart.update();
+}
 
-  // 既存グラフを破棄
-  if (window._charts && window._charts[canvasId]) {
+// 共通のChart破棄処理
+function destroyChart(canvasId) {
+  if (window._charts?.[canvasId]) {
     window._charts[canvasId].destroy();
+    delete window._charts[canvasId];
   }
+}
+
+// 潮位グラフを描画
+function drawChart(canvasId, tideData, astroData, currentIdx, intervalMin, startMin = 0) {
+  const el = document.getElementById(canvasId);
+  if (!el) return;
+  destroyChart(canvasId);
   if (!window._charts) window._charts = {};
 
-  // null を含むtideDataを処理（欠測はnullのまま）
+  const count = tideData.length;
+  const labels = buildTimeLabels(intervalMin, count, startMin);
   const tideWithNull = tideData.map(v => (v === null || v === 32767) ? null : v);
 
-  // 現在位置のタテ線用データセット
-  const currentLineData = Array(count).fill(null);
-  if (currentIdx >= 0 && currentIdx < count) {
-    const min = Math.min(...tideWithNull.filter(v => v !== null));
-    const max = Math.max(...tideWithNull.filter(v => v !== null));
-    currentLineData[currentIdx] = max + 10;
-  }
-
-  window._charts[canvasId] = new Chart(ctx, {
+  window._charts[canvasId] = new Chart(el.getContext('2d'), {
     type: 'line',
     data: {
       labels,
@@ -141,35 +162,23 @@ function drawChart(canvasId, tideData, astroData, currentIdx, intervalMin, start
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: {
-          display: true,
-          position: 'bottom',
-          labels: { font: { size: 11 }, boxWidth: 20 },
-        },
+        legend: { display: true, position: 'bottom', labels: { font: { size: 11 }, boxWidth: 20 } },
         tooltip: {
           mode: 'index',
           intersect: false,
           callbacks: {
             title: (items) => {
-              const i = items[0].dataIndex;
-              const totalMin = i * intervalMin;
-              const h = String(Math.floor(totalMin / 60)).padStart(2, '0');
-              const m = String(totalMin % 60).padStart(2, '0');
+              const totalMin = startMin + items[0].dataIndex * intervalMin;
+              const h = String(Math.floor(totalMin / 60) % 24).padStart(2, '0');
+              const m = String(Math.round(totalMin % 60)).padStart(2, '0');
               return `${h}:${m}`;
             },
-            label: (item) => {
-              if (item.parsed.y === null) return null;
-              return `${item.dataset.label}: ${item.parsed.y} cm`;
-            },
+            label: (item) => item.parsed.y === null ? null : `${item.dataset.label}: ${item.parsed.y} cm`,
           },
         },
-        annotation: undefined,
       },
       scales: {
-        x: {
-          ticks: { font: { size: 10 }, maxRotation: 0 },
-          grid: { color: 'rgba(0,0,0,0.05)' },
-        },
+        x: { ticks: { font: { size: 10 }, maxRotation: 0 }, grid: { color: 'rgba(0,0,0,0.05)' } },
         y: {
           ticks: { font: { size: 10 } },
           grid: { color: 'rgba(0,0,0,0.07)' },
@@ -179,30 +188,69 @@ function drawChart(canvasId, tideData, astroData, currentIdx, intervalMin, start
     },
   });
 
-  // 現在時刻の縦線を手動描画（afterDraw プラグイン）
-  if (currentIdx >= 0 && currentIdx < count) {
-    const chart = window._charts[canvasId];
-    const plugin = {
-      id: 'currentLine_' + canvasId,
-      afterDraw(chart) {
-        const ctx = chart.ctx;
-        const xScale = chart.scales.x;
-        const yScale = chart.scales.y;
-        const x = xScale.getPixelForValue(currentIdx);
-        ctx.save();
-        ctx.beginPath();
-        ctx.setLineDash([5, 3]);
-        ctx.strokeStyle = CHART_COLORS.current;
-        ctx.lineWidth = 2;
-        ctx.moveTo(x, yScale.top);
-        ctx.lineTo(x, yScale.bottom);
-        ctx.stroke();
-        ctx.restore();
+  registerCurrentLinePlugin(window._charts[canvasId], canvasId, currentIdx, count);
+}
+
+// 潮位偏差グラフを描画（観測 − 天文）
+function drawDeviationChart(canvasId, deviationData, currentIdx, intervalMin, startMin = 0) {
+  const el = document.getElementById(canvasId);
+  if (!el || !deviationData) return;
+  destroyChart(canvasId);
+  if (!window._charts) window._charts = {};
+
+  const count = deviationData.length;
+  const labels = buildTimeLabels(intervalMin, count, startMin);
+
+  window._charts[canvasId] = new Chart(el.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: '潮位偏差 (cm)',
+        data: deviationData,
+        backgroundColor: deviationData.map(v =>
+          v === null ? 'transparent' : v >= 0 ? 'rgba(244,67,54,0.6)' : 'rgba(33,150,243,0.6)'
+        ),
+        borderWidth: 0,
+        barPercentage: 1.0,
+        categoryPercentage: 1.0,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, position: 'bottom', labels: { font: { size: 10 }, boxWidth: 16 } },
+        tooltip: {
+          mode: 'index',
+          intersect: false,
+          callbacks: {
+            title: (items) => {
+              const totalMin = startMin + items[0].dataIndex * intervalMin;
+              const h = String(Math.floor(totalMin / 60) % 24).padStart(2, '0');
+              const m = String(Math.round(totalMin % 60)).padStart(2, '0');
+              return `${h}:${m}`;
+            },
+            label: (item) => {
+              if (item.parsed.y === null) return null;
+              const sign = item.parsed.y >= 0 ? '+' : '';
+              return `潮位偏差: ${sign}${item.parsed.y} cm`;
+            },
+          },
+        },
       },
-    };
-    Chart.register(plugin);
-    chart.update();
-  }
+      scales: {
+        x: { ticks: { font: { size: 10 }, maxRotation: 0 }, grid: { color: 'rgba(0,0,0,0.05)' } },
+        y: {
+          ticks: { font: { size: 10 } },
+          grid: { color: 'rgba(0,0,0,0.07)' },
+          title: { display: true, text: 'cm', font: { size: 10 } },
+        },
+      },
+    },
+  });
+
+  registerCurrentLinePlugin(window._charts[canvasId], canvasId, currentIdx, count);
 }
 
 // 観測所カードのHTMLを生成
@@ -210,11 +258,6 @@ function createStationCard(station) {
   const card = document.createElement('div');
   card.className = 'station-card';
   card.id = `card-${station.code}`;
-
-  const zoomBtns = ZOOM_MODES.map((m, i) =>
-    `<button class="zoom-btn${i === 0 ? ' active' : ''}" data-mode="${m.id}">${m.label}</button>`
-  ).join('');
-
   card.innerHTML = `
     <div class="card-header">
       <h2 class="station-name">
@@ -227,142 +270,80 @@ function createStationCard(station) {
       <span class="current-value" id="current-${station.code}">--</span>
       <span class="current-unit">cm</span>
     </div>
-    <div class="zoom-buttons">${zoomBtns}</div>
     <div class="card-graph">
       <canvas id="chart-${station.code}" width="400" height="180"></canvas>
+    </div>
+    <div class="card-deviation">
+      <div class="deviation-label">潮位偏差（観測 − 天文）</div>
+      <canvas id="dev-chart-${station.code}" width="400" height="90"></canvas>
     </div>
     <div class="card-footer">
       <span class="data-time" id="time-${station.code}"></span>
     </div>
   `;
-
-  // ズームボタンのクリックイベント
-  card.querySelector('.zoom-buttons').addEventListener('click', (e) => {
-    const btn = e.target.closest('.zoom-btn');
-    if (!btn) return;
-    card.querySelectorAll('.zoom-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    redrawStation(station.code, btn.dataset.mode);
-  });
-
   return card;
 }
 
 // 観測所のデータを読み込んで表示
-async function loadStation(station, dateStr, year, mmdd, currentIdx) {
-  const [obsData, astroData] = await Promise.allSettled([
+async function loadStation(station, dateStr, year, mmdd, currentRawIdx, prevDateStr, prevMmdd) {
+  const [prevObsResult, obsResult, astroResult] = await Promise.allSettled([
+    fetchJMA(obsPath(prevDateStr, station.code)),
     fetchJMA(obsPath(dateStr, station.code)),
     fetchJMA(astroPath(year, station.code)),
   ]);
 
-  if (obsData.status === 'rejected') {
-    console.warn(`[${station.name}] 観測データ取得失敗:`, obsData.reason);
+  if (obsResult.status === 'rejected') {
+    console.warn(`[${station.name}] 観測データ取得失敗:`, obsResult.reason);
     const el = document.getElementById(`current-${station.code}`);
     if (el) el.textContent = 'N/A';
     return;
   }
 
-  const obs = obsData.value;
+  const todayTide = obsResult.value.tide;
+
+  // 前日データを結合（前日データがない場合は空配列）
+  const yesterdayTide = prevObsResult.status === 'fulfilled' ? prevObsResult.value.tide : [];
+  const combinedTide = [...yesterdayTide, ...todayTide];
+  const todayOffset = yesterdayTide.length;
+  const combinedCurrentRawIdx = todayOffset + currentRawIdx;
+
+  // 天文潮位（前日 + 当日を結合）
+  // 前日ありの場合: hourPos=0が前日0時、hourPos=24が当日0時
+  // 前日なしの場合: hourPos=0が当日0時
+  const astroValue = astroResult.status === 'fulfilled' ? astroResult.value : null;
+  const astroToday = astroValue?.tide?.[mmdd] ?? null;
+  const astroYesterday = astroValue?.tide?.[prevMmdd] ?? null;
+  const combinedAstroHourly = astroToday
+    ? (astroYesterday ? [...astroYesterday, ...astroToday] : astroToday)
+    : null;
 
   // rawデータを保存（ズーム再描画用）
   if (!window._stationRaw) window._stationRaw = {};
   window._stationRaw[station.code] = {
-    tide: obs.tide,
-    astroHourly: astroData.status === 'fulfilled' ? astroData.value.tide?.[mmdd] : null,
-    currentRawIdx: currentIdx * 60,
+    tide: combinedTide,
+    astroHourly: combinedAstroHourly,
+    todayOffset,
+    currentRawIdx: combinedCurrentRawIdx,
   };
 
-  // interval はデータの記録間隔（秒単位）
-  const intervalSec = obs.interval || 15;
-  // グラフは15分単位（96点/日）に間引いて表示する
-  const DISPLAY_MIN = 15;
-  const step = Math.round(DISPLAY_MIN * 60 / intervalSec); // 15分/interval秒 = 60
-  const displayPoints = 96; // 24時間 × 4点/時
-
-  // 15分間隔へダウンサンプリング（観測済み分は実値、未観測分はnull）
-  const tideArray = [];
-  for (let i = 0; i < displayPoints; i++) {
-    const rawIdx = i * step;
-    const v = rawIdx < obs.tide.length ? obs.tide[rawIdx] : null;
-    tideArray.push((v === null || v === 32767) ? null : v);
-  }
-
-  // 現在潮位（currentIdx は15分単位のインデックス）
-  const currentVal = tideArray[currentIdx];
+  // 現在潮位の表示（当日rawデータから直接取得）
+  const curVal = currentRawIdx < todayTide.length ? todayTide[currentRawIdx] : null;
   const currentEl = document.getElementById(`current-${station.code}`);
   if (currentEl) {
-    if (currentVal === null) {
-      currentEl.textContent = '--';
-    } else {
-      currentEl.textContent = currentVal;
-      currentEl.className = 'current-value';
-    }
+    currentEl.textContent = (curVal === null || curVal === 32767) ? '--' : curVal;
   }
 
   // 時刻表示
   const timeEl = document.getElementById(`time-${station.code}`);
   if (timeEl) {
-    const totalMin = currentIdx * DISPLAY_MIN;
+    const totalMin = currentRawIdx * 15 / 60;
     const h = String(Math.floor(totalMin / 60)).padStart(2, '0');
-    const m = String(totalMin % 60).padStart(2, '0');
+    const m = String(Math.round(totalMin % 60)).padStart(2, '0');
     timeEl.textContent = `${h}:${m} 時点`;
   }
 
-  // 天文潮位の補間（1時間→15分単位、96点）
-  let interpolatedAstro = null;
-  if (astroData.status === 'fulfilled') {
-    const astroHourly = astroData.value.tide?.[mmdd];
-    if (astroHourly) {
-      interpolatedAstro = interpolateAstro(astroHourly, displayPoints, DISPLAY_MIN);
-    }
-  }
-
-  // グラフ描画
-  drawChart(`chart-${station.code}`, tideArray, interpolatedAstro, currentIdx, DISPLAY_MIN);
-}
-
-// ページ全体の初期化
-async function init() {
-  const statusEl = document.getElementById('status-message');
-  const grid = document.getElementById('station-grid');
-
-  try {
-    // basetime を取得
-    const basetimeData = await fetchJMA('data/tide/tide_time.json');
-    const baseTime = parseJMATime(basetimeData.time);
-
-    const dateStr = formatDateJST(baseTime);
-    const year = getYearJST(baseTime);
-    const mmdd = getMMDD(baseTime);
-
-    // basetimeを表示
-    const basetimeEl = document.getElementById('basetime');
-    if (basetimeEl) {
-      const jst = new Date(baseTime.getTime() + 9 * 60 * 60 * 1000);
-      const hh = String(jst.getUTCHours()).padStart(2, '0');
-      const mm = String(jst.getUTCMinutes()).padStart(2, '0');
-      basetimeEl.textContent = `（${dateStr.slice(0,4)}/${dateStr.slice(4,6)}/${dateStr.slice(6)} ${hh}:${mm} JST 現在）`;
-    }
-
-    // 現在のデータインデックス（表示用15分単位）
-    const currentIdx = getCurrentIndex(baseTime);
-
-    // カードを先に生成
-    statusEl.style.display = 'none';
-    STATIONS.forEach(station => {
-      grid.appendChild(createStationCard(station));
-    });
-
-    // 各観測所のデータを並行して取得
-    await Promise.all(
-      STATIONS.map(station => loadStation(station, dateStr, year, mmdd, currentIdx))
-    );
-
-  } catch (err) {
-    console.error('初期化エラー:', err);
-    statusEl.textContent = 'データの読み込みに失敗しました。しばらく経ってから再読み込みしてください。';
-    statusEl.className = 'status-error';
-  }
+  // 初期グラフ描画
+  redrawStation(station.code, window._currentMode || '24h');
 }
 
 // 指定モードでグラフを再描画（ズーム切り替え用）
@@ -376,14 +357,9 @@ function redrawStation(code, mode) {
   const intervalMin = modeConf.stepSec / 60;
   const count = Math.round(modeConf.hours * 60 / intervalMin);
 
-  // 全日は0時始まり、それ以外は現在時刻を中心に表示
-  let rawStart;
-  if (mode === 'day') {
-    rawStart = 0;
-  } else {
-    const halfPoints = Math.floor(count / 2);
-    rawStart = Math.max(0, raw.currentRawIdx - halfPoints * step);
-  }
+  // 現在を終点として過去方向に表示
+  const rawEnd = raw.currentRawIdx;
+  const rawStart = Math.max(0, rawEnd - (count - 1) * step);
 
   // rawデータから表示範囲を切り出し
   const tideArray = [];
@@ -393,15 +369,70 @@ function redrawStation(code, mode) {
     tideArray.push((v === null || v === 32767) ? null : v);
   }
 
+  // 現在は常に最右端のインデックス
+  const currentDisplayIdx = count - 1;
   const startMin = rawStart * RAW_SEC / 60;
-  const currentDisplayIdx = Math.round((raw.currentRawIdx - rawStart) / step);
 
   let astroArray = null;
   if (raw.astroHourly) {
     astroArray = interpolateAstro(raw.astroHourly, count, intervalMin, startMin);
   }
 
+  // 偏差 = 観測 - 天文
+  const deviationArray = (astroArray && tideArray)
+    ? tideArray.map((v, i) => (v !== null && astroArray[i] !== null) ? v - astroArray[i] : null)
+    : null;
+
   drawChart(`chart-${code}`, tideArray, astroArray, currentDisplayIdx, intervalMin, startMin);
+  drawDeviationChart(`dev-chart-${code}`, deviationArray, currentDisplayIdx, intervalMin, startMin);
+}
+
+// ページ全体の初期化
+async function init() {
+  const statusEl = document.getElementById('status-message');
+  const grid = document.getElementById('station-grid');
+
+  try {
+    const basetimeData = await fetchJMA('data/tide/tide_time.json');
+    const baseTime = parseJMATime(basetimeData.time);
+
+    const dateStr = formatDateJST(baseTime);
+    const year = getYearJST(baseTime);
+    const mmdd = getMMDD(baseTime);
+
+    // 前日の日付
+    const prevDate = new Date(baseTime.getTime() - 24 * 60 * 60 * 1000);
+    const prevDateStr = formatDateJST(prevDate);
+    const prevMmdd = getMMDD(prevDate);
+
+    // 現在のrawインデックス（15秒単位）
+    const currentRawIdx = getCurrentRawIndex(baseTime);
+
+    // basetimeを表示
+    const basetimeEl = document.getElementById('basetime');
+    if (basetimeEl) {
+      const jst = new Date(baseTime.getTime() + 9 * 60 * 60 * 1000);
+      const hh = String(jst.getUTCHours()).padStart(2, '0');
+      const mm = String(jst.getUTCMinutes()).padStart(2, '0');
+      basetimeEl.textContent = `（${dateStr.slice(0,4)}/${dateStr.slice(4,6)}/${dateStr.slice(6)} ${hh}:${mm} JST 現在）`;
+    }
+
+    statusEl.style.display = 'none';
+    STATIONS.forEach(station => {
+      grid.appendChild(createStationCard(station));
+    });
+
+    await Promise.all(
+      STATIONS.map(station =>
+        loadStation(station, dateStr, year, mmdd, currentRawIdx, prevDateStr, prevMmdd)
+      )
+    );
+
+  } catch (err) {
+    console.error('初期化エラー:', err);
+    statusEl.textContent = 'データの読み込みに失敗しました。しばらく経ってから再読み込みしてください。';
+    statusEl.className = 'status-error';
+  }
 }
 
 // 自動更新
@@ -420,6 +451,20 @@ function startAutoRefresh() {
 
 // 起動
 document.addEventListener('DOMContentLoaded', () => {
+  // グローバルズームボタン（一度だけ設定）
+  const globalZoom = document.getElementById('global-zoom');
+  if (globalZoom) {
+    globalZoom.addEventListener('click', (e) => {
+      const btn = e.target.closest('.zoom-btn');
+      if (!btn) return;
+      const mode = btn.dataset.mode;
+      globalZoom.querySelectorAll('.zoom-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      window._currentMode = mode;
+      STATIONS.forEach(s => redrawStation(s.code, mode));
+    });
+  }
+
   init();
   startAutoRefresh();
 });
