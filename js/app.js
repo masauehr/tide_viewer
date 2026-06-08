@@ -44,11 +44,11 @@ function parseJMATime(timeStr) {
   return new Date(timeStr);
 }
 
-// 現在の観測インデックスを計算（15分間隔）
-function getCurrentIndex(baseTime, intervalMin) {
+// 現在の表示インデックスを計算（15分単位、0〜95）
+function getCurrentIndex(baseTime) {
   const jst = new Date(baseTime.getTime() + 9 * 60 * 60 * 1000);
   const minutesFromMidnight = jst.getUTCHours() * 60 + jst.getUTCMinutes();
-  return Math.min(Math.floor(minutesFromMidnight / intervalMin), 95);
+  return Math.min(Math.floor(minutesFromMidnight / 15), 95);
 }
 
 // 時刻ラベルを生成（96点=15分×96=24時間）
@@ -241,20 +241,29 @@ async function loadStation(station, dateStr, year, mmdd, currentIdx) {
   }
 
   const obs = obsData.value;
-  const intervalMin = obs.interval || 15;
-  const pointsPerDay = Math.round(24 * 60 / intervalMin); // 15分なら96
-  // データファイルは複数日分を含むため今日分のみ取り出す
-  const tideArray = obs.tide.slice(0, pointsPerDay);
+  // interval はデータの記録間隔（秒単位）
+  const intervalSec = obs.interval || 15;
+  // グラフは15分単位（96点/日）に間引いて表示する
+  const DISPLAY_MIN = 15;
+  const step = Math.round(DISPLAY_MIN * 60 / intervalSec); // 15分/interval秒 = 60
+  const displayPoints = 96; // 24時間 × 4点/時
 
-  // 現在潮位
+  // 15分間隔へダウンサンプリング（観測済み分は実値、未観測分はnull）
+  const tideArray = [];
+  for (let i = 0; i < displayPoints; i++) {
+    const rawIdx = i * step;
+    const v = rawIdx < obs.tide.length ? obs.tide[rawIdx] : null;
+    tideArray.push((v === null || v === 32767) ? null : v);
+  }
+
+  // 現在潮位（currentIdx は15分単位のインデックス）
   const currentVal = tideArray[currentIdx];
   const currentEl = document.getElementById(`current-${station.code}`);
   if (currentEl) {
-    if (currentVal === null || currentVal === 32767) {
+    if (currentVal === null) {
       currentEl.textContent = '--';
     } else {
       currentEl.textContent = currentVal;
-      // 潮位に応じて色付け（任意のしきい値）
       currentEl.className = 'current-value';
     }
   }
@@ -262,23 +271,23 @@ async function loadStation(station, dateStr, year, mmdd, currentIdx) {
   // 時刻表示
   const timeEl = document.getElementById(`time-${station.code}`);
   if (timeEl) {
-    const totalMin = currentIdx * intervalMin;
+    const totalMin = currentIdx * DISPLAY_MIN;
     const h = String(Math.floor(totalMin / 60)).padStart(2, '0');
     const m = String(totalMin % 60).padStart(2, '0');
     timeEl.textContent = `${h}:${m} 時点`;
   }
 
-  // 天文潮位の補間
+  // 天文潮位の補間（1時間→15分単位、96点）
   let interpolatedAstro = null;
   if (astroData.status === 'fulfilled') {
     const astroHourly = astroData.value.tide?.[mmdd];
     if (astroHourly) {
-      interpolatedAstro = interpolateAstro(astroHourly, pointsPerDay, intervalMin);
+      interpolatedAstro = interpolateAstro(astroHourly, displayPoints, DISPLAY_MIN);
     }
   }
 
   // グラフ描画
-  drawChart(`chart-${station.code}`, tideArray, interpolatedAstro, currentIdx, intervalMin);
+  drawChart(`chart-${station.code}`, tideArray, interpolatedAstro, currentIdx, DISPLAY_MIN);
 }
 
 // ページ全体の初期化
@@ -304,8 +313,8 @@ async function init() {
       basetimeEl.textContent = `（${dateStr.slice(0,4)}/${dateStr.slice(4,6)}/${dateStr.slice(6)} ${hh}:${mm} JST 現在）`;
     }
 
-    // 現在のデータインデックス（15分間隔を仮定）
-    const currentIdx = getCurrentIndex(baseTime, 15);
+    // 現在のデータインデックス（表示用15分単位）
+    const currentIdx = getCurrentIndex(baseTime);
 
     // カードを先に生成
     statusEl.style.display = 'none';
