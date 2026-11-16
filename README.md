@@ -34,13 +34,13 @@
 
 ```bash
 # Python 3
-python3 -m http.server 8080
+python3 -m http.server 8081
 
 # Node.js (npx)
 npx serve .
 ```
 
-ブラウザで `http://localhost:8080` を開いてください。
+ブラウザで `http://localhost:8081` を開いてください。
 
 または GitHub Pages にデプロイすれば直接アクセスできます。
 

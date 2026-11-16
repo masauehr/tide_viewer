@@ -76,8 +76,8 @@
 
 ```bash
 cd ~/projects/tide_viewer
-python3 -m http.server 8080
-# ブラウザで http://localhost:8080 を開く
+python3 -m http.server 8081
+# ブラウザで http://localhost:8081 を開く
 ```
 
 ### GitHub Pages での公開
